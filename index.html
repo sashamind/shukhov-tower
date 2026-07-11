@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Шуховская башня — 3D</title>
+<style>
+  :root{
+    --sky:#0e1116; --steel:#d8cdb8; --red:#d43a2f; --ink:#e9e4d8; --dim:#7d7a70;
+    --line:rgba(216,205,184,.42);
+    --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%;overflow:hidden;background:var(--sky);overscroll-behavior:none;
+    -webkit-tap-highlight-color:transparent;
+    font-family:"Arial Narrow","Helvetica Neue Condensed",Roboto,Arial,sans-serif;color:var(--ink)}
+  #scene{position:fixed;inset:0;width:100%;height:100%;display:block;cursor:grab;
+    touch-action:none}
+  #scene.dragging{cursor:grabbing}
+  #overlay{position:fixed;inset:0;width:100%;height:100%;pointer-events:none}
+  #overlay.off{display:none}
+
+  /* чертёжная разметка */
+  .dim{stroke:var(--line);stroke-width:1;fill:none;opacity:.7}
+  .tick{stroke:var(--line);stroke-width:1;opacity:.7}
+  .val{font-family:var(--mono);font-size:15px;font-weight:300;fill:var(--steel);letter-spacing:.04em;opacity:.7}
+  .cap{font-family:var(--mono);font-size:9.5px;font-weight:300;fill:var(--dim);letter-spacing:.16em;text-transform:uppercase;opacity:.7}
+
+  .hud{position:fixed;left:24px;top:24px;pointer-events:none;user-select:none;max-width:270px}
+  .hud .eyebrow{font-size:11px;letter-spacing:.35em;text-transform:uppercase;color:var(--red);font-weight:700}
+  .hud h1{font-size:clamp(24px,3.6vw,40px);font-weight:700;letter-spacing:.02em;text-transform:uppercase;line-height:1;margin-top:6px}
+  .hud .sub{margin-top:10px;font-size:10px;font-weight:300;line-height:1.55;letter-spacing:.02em;color:var(--dim);font-family:var(--mono)}
+  .hud .sub b{color:var(--steel);font-weight:500}
+
+  .panel{position:fixed;right:24px;bottom:24px;width:242px;
+    background:rgba(14,17,22,.86);border:1px solid rgba(216,205,184,.18);padding:16px;backdrop-filter:blur(6px)}
+  .panel label{display:flex;justify-content:space-between;font-size:10px;
+    letter-spacing:.16em;text-transform:uppercase;color:var(--dim);margin-bottom:6px;font-family:var(--mono)}
+  .panel label output{color:var(--steel);font-weight:700}
+  .panel .row{margin-bottom:14px}
+  /* трек тонкий, но у ползунка большая невидимая тач-область (padding + прозрачный трек) */
+  input[type=range]{width:100%;appearance:none;background:transparent;outline:none;
+    touch-action:pan-y;cursor:pointer}
+  input[type=range]::-webkit-slider-runnable-track{height:2px;background:rgba(216,205,184,.25)}
+  input[type=range]::-moz-range-track{height:2px;background:rgba(216,205,184,.25)}
+  input[type=range]::-webkit-slider-thumb{appearance:none;width:14px;height:14px;margin-top:-6px;
+    background:var(--red);border-radius:0;cursor:pointer;
+    box-shadow:0 0 0 10px rgba(0,0,0,0)}
+  input[type=range]::-moz-range-thumb{width:14px;height:14px;background:var(--red);border:none;border-radius:0;cursor:pointer}
+  .btns{display:flex;gap:8px}
+  .panel button{flex:1;padding:9px 0;background:none;color:var(--steel);
+    border:1px solid rgba(216,205,184,.35);font-family:var(--mono);font-size:9px;
+    letter-spacing:.14em;text-transform:uppercase;cursor:pointer;touch-action:manipulation}
+  .panel button:hover{border-color:var(--red);color:var(--ink)}
+  .panel button[aria-pressed=true]{border-color:var(--red);color:var(--ink);background:rgba(212,58,47,.16)}
+  .panel button:focus-visible,input:focus-visible{outline:2px solid var(--red);outline-offset:2px}
+
+  .panel{
+    right:calc(24px + env(safe-area-inset-right));
+    bottom:calc(24px + env(safe-area-inset-bottom));}
+  .hud{
+    left:calc(24px + env(safe-area-inset-left));
+    top:calc(24px + env(safe-area-inset-top));}
+
+  @media (max-width:760px){
+    .panel{right:12px;left:12px;width:auto;
+      bottom:calc(12px + env(safe-area-inset-bottom));
+      padding:14px;grid-gap:10px}
+    .panel .row{margin-bottom:12px}
+    .hud{left:calc(14px + env(safe-area-inset-left));
+      top:calc(14px + env(safe-area-inset-top));max-width:200px}
+    .cap{display:none}
+  }
+  /* ландшафтные телефоны: панель узкая справа, чтобы не растягивалась на всю ширину */
+  @media (max-width:900px) and (orientation:landscape) and (max-height:520px){
+    .panel{left:auto;right:calc(12px + env(safe-area-inset-right));width:200px}
+    .hud{max-width:160px}
+    .hud h1{font-size:22px}
+    .hud .sub{display:none}
+  }
+</style>
+</head>
+<body>
+<canvas id="scene"></canvas>
+<svg id="overlay" aria-hidden="true"></svg>
+
+<div class="hud">
+  <div class="eyebrow">Москва · Шаболовка</div>
+  <h1>Шуховская<br>башня</h1>
+  <div class="sub">1920—1922 · В.&nbsp;Г.&nbsp;Шухов<br>
+    сталь, заклёпки · <b>240 т</b><br>
+    первая радиотрансляция <b>19.03.1922</b></div>
+</div>
+
+<div class="panel">
+  <div class="row">
+    <label for="twist">Закрутка <output id="twistOut">100%</output></label>
+    <input type="range" id="twist" min="0" max="150" value="100" step="1" aria-label="Закрутка образующих, % от реальной">
+  </div>
+  <div class="row">
+    <label for="spin">Вращение <output id="spinOut">0.30</output></label>
+    <input type="range" id="spin" min="0" max="1" value="0.3" step="0.05" aria-label="Скорость автоповорота">
+  </div>
+  <div class="btns" style="margin-bottom:8px">
+    <button id="info" aria-pressed="true">Размеры</button>
+    <button id="reset">Сброс</button>
+  </div>
+  <div class="btns">
+    <button id="export">Скачать .obj</button>
+  </div>
+</div>
+
+<noscript><div style="position:fixed;inset:0;display:grid;place-items:center;padding:24px;text-align:center;color:#e9e4d8;font-family:sans-serif">Для 3D-модели нужен включённый JavaScript.</div></noscript>
+<script>
+(function(){
+  // Понятное сообщение вместо белого экрана, если что-то не загрузилось / не поддерживается.
+  function fatal(msg){
+    const d=document.createElement('div');
+    d.style.cssText='position:fixed;inset:0;display:grid;place-items:center;padding:24px;'+
+      'text-align:center;color:#e9e4d8;background:#0e1116;font-family:sans-serif;line-height:1.6';
+    d.innerHTML=msg;
+    document.body.appendChild(d);
+  }
+  // Последовательная загрузка three.js с резервным CDN.
+  function loadScript(urls, cb){
+    if(!urls.length){ cb(new Error('all sources failed')); return; }
+    const s=document.createElement('script');
+    s.src=urls[0]; s.crossOrigin='anonymous';
+    s.onload=()=>cb(null);
+    s.onerror=()=>loadScript(urls.slice(1), cb);
+    document.head.appendChild(s);
+  }
+  loadScript([
+    'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js',
+    'https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js',
+    'https://unpkg.com/three@0.128.0/build/three.min.js'
+  ], function(err){
+    if(err || typeof THREE==='undefined'){
+      fatal('Не удалось загрузить библиотеку three.js.<br>Проверьте подключение к сети и обновите страницу.');
+      return;
+    }
+    try{ boot(); }
+    catch(e){ console.error(e); fatal('Ошибка инициализации 3D-сцены.<br>'+(e&&e.message||'')); }
+  });
+
+  function boot(){
+  const canvas = document.getElementById('scene');
+  // Проверка поддержки WebGL до создания рендерера.
+  try{
+    const gl=canvas.getContext('webgl')||canvas.getContext('experimental-webgl');
+    if(!gl) throw 0;
+  }catch(_){
+    fatal('Ваш браузер или устройство не поддерживает WebGL,<br>поэтому 3D-модель не может быть отрисована.');
+    return;
+  }
+  const svg = document.getElementById('overlay');
+  const renderer = new THREE.WebGLRenderer({canvas, antialias:true});
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x0e1116);
+  scene.fog = new THREE.Fog(0x0e1116, 320, 800);
+  const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 3000);
+
+  scene.add(new THREE.HemisphereLight(0x8fa4c0, 0x24201a, 0.55));
+  const key = new THREE.DirectionalLight(0xfff0d8, 1.15); key.position.set(120,180,90); scene.add(key);
+  const rim = new THREE.DirectionalLight(0x7fa8d8, 0.6); rim.position.set(-140,60,-110); scene.add(rim);
+
+  // ---------- параметры (лазерное сканирование 2012) ----------
+  const RINGS  = [20.15, 16.15, 12.7, 9.7, 7.05, 4.2, 1.6];
+  const LEVELS = [0, 25, 50, 75, 100, 125, 148];
+  const BEAMS  = [24, 24, 24, 24, 12, 12];
+  const TWISTS = [26, 33, 44, 55, 65, 70];
+  const H = 148, MAST_H = 12, TOTAL = 160;
+  const ROD_R = 0.16, RING_R = 0.13, NS = 8;
+
+  const tower = new THREE.Group(); scene.add(tower);
+  let mesh = null, lastK = 1;
+
+  function buildGeometry(k){
+    const verts = [], quads = [];
+    const V=(x,y,z)=>{verts.push([x,y,z]);return verts.length-1;};
+    function tube(p0,p1,r,ns=NS){
+      const ax=[p1[0]-p0[0],p1[1]-p0[1],p1[2]-p0[2]];
+      const L=Math.hypot(ax[0],ax[1],ax[2]); if(L<1e-9)return;
+      ax[0]/=L;ax[1]/=L;ax[2]/=L;
+      const ref = Math.abs(ax[1])<0.9?[0,1,0]:[1,0,0];
+      let u=[ax[1]*ref[2]-ax[2]*ref[1],ax[2]*ref[0]-ax[0]*ref[2],ax[0]*ref[1]-ax[1]*ref[0]];
+      const lu=Math.hypot(u[0],u[1],u[2]); u=u.map(a=>a/lu);
+      const v=[ax[1]*u[2]-ax[2]*u[1],ax[2]*u[0]-ax[0]*u[2],ax[0]*u[1]-ax[1]*u[0]];
+      const base=verts.length;
+      for(const p of [p0,p1]) for(let i=0;i<ns;i++){
+        const a=2*Math.PI*i/ns, ca=Math.cos(a), sa=Math.sin(a);
+        V(p[0]+r*(ca*u[0]+sa*v[0]), p[1]+r*(ca*u[1]+sa*v[1]), p[2]+r*(ca*u[2]+sa*v[2]));
+      }
+      for(let i=0;i<ns;i++){const j=(i+1)%ns;quads.push([base+i,base+j,base+ns+j,base+ns+i]);}
+    }
+    function ring(rc,y,r,nseg=64,ns=NS){
+      const base=verts.length;
+      for(let i=0;i<nseg;i++){
+        const t=2*Math.PI*i/nseg, ux=Math.cos(t), uz=Math.sin(t);
+        for(let j=0;j<ns;j++){const a=2*Math.PI*j/ns;
+          V(rc*ux+r*Math.cos(a)*ux, y+r*Math.sin(a), rc*uz+r*Math.cos(a)*uz);}
+      }
+      for(let i=0;i<nseg;i++){const i2=(i+1)%nseg;
+        for(let j=0;j<ns;j++){const j2=(j+1)%ns;
+          quads.push([base+i*ns+j,base+i2*ns+j,base+i2*ns+j2,base+i*ns+j2]);}}
+    }
+    for(let s=0;s<6;s++){
+      const r1=RINGS[s],r2=RINGS[s+1],y1=LEVELS[s],y2=LEVELS[s+1];
+      const n=BEAMS[s], tw=THREE.MathUtils.degToRad(TWISTS[s]*k);
+      for(const d of [1,-1]) for(let i=0;i<n;i++){
+        const a0=2*Math.PI*i/n, a1=a0+d*tw;
+        tube([r1*Math.cos(a0),y1,r1*Math.sin(a0)],[r2*Math.cos(a1),y2,r2*Math.sin(a1)],ROD_R);
+      }
+    }
+    for(let j=0;j<7;j++){
+      const rr=RINGS[j]*1.02, yy=Math.max(LEVELS[j],0.6);
+      ring(rr,yy-0.55,RING_R); ring(rr,yy+0.55,RING_R);
+    }
+    const rA=21.6,rB=RINGS[0],yB=3.4,sk=THREE.MathUtils.degToRad(10);
+    for(const d of [1,-1]) for(let i=0;i<40;i++){
+      const a0=2*Math.PI*i/40,a1=a0+d*sk;
+      tube([rA*Math.cos(a0),0,rA*Math.sin(a0)],[rB*Math.cos(a1),yB,rB*Math.sin(a1)],ROD_R*0.8);
+    }
+    ring(rA,0,RING_R);
+    const rm=1.1,nm=8,top=H+8.5;
+    for(let i=0;i<nm;i++){
+      const a=2*Math.PI*i/nm, lo=[rm*Math.cos(a),H+1.2,rm*Math.sin(a)];
+      tube(lo,[rm*Math.cos(a),top,rm*Math.sin(a)],0.08);
+      for(const d of [1,-1]){const a2=a+d*2*(2*Math.PI/nm);
+        tube(lo,[rm*Math.cos(a2),top,rm*Math.sin(a2)],0.06);}
+      tube([RINGS[6]*Math.cos(a),H,RINGS[6]*Math.sin(a)],lo,0.08);
+    }
+    for(let y=H+1.2;y<=top;y+=2.4) ring(rm,y,0.07,32);
+    tube([0,top,0],[0,H+MAST_H,0],0.09);
+    return {verts,quads};
+  }
+
+  function rebuild(k){
+    lastK=k;
+    const {verts,quads}=buildGeometry(k);
+    if(mesh){tower.remove(mesh);mesh.geometry.dispose();}
+    const pos=new Float32Array(quads.length*6*3); let o=0;
+    const put=i=>{const v=verts[i];pos[o++]=v[0];pos[o++]=v[1];pos[o++]=v[2];};
+    for(const q of quads){put(q[0]);put(q[1]);put(q[2]);put(q[0]);put(q[2]);put(q[3]);}
+    const g=new THREE.BufferGeometry();
+    g.setAttribute('position',new THREE.BufferAttribute(pos,3));
+    g.computeVertexNormals();
+    mesh=new THREE.Mesh(g,new THREE.MeshStandardMaterial({color:0xb9ad96,roughness:.62,metalness:.85}));
+    tower.add(mesh);
+  }
+
+  function exportOBJ(){
+    const {verts,quads}=buildGeometry(lastK);
+    const L=['# Shukhov Tower (Shabolovka, 1922) — parametric reconstruction',
+             '# units: meters, Y-up. Blender: File > Import > Wavefront (.obj)',
+             `# twist: ${(lastK*100).toFixed(0)}% of reconstructed angles`,'o shukhov_tower'];
+    for(const v of verts) L.push(`v ${v[0].toFixed(4)} ${v[1].toFixed(4)} ${v[2].toFixed(4)}`);
+    L.push('s 1');
+    for(const q of quads) L.push(`f ${q[0]+1} ${q[1]+1} ${q[2]+1} ${q[3]+1}`);
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(new Blob([L.join('\n')],{type:'model/obj'}));
+    a.download='shukhov-tower.obj'; a.click(); URL.revokeObjectURL(a.href);
+  }
+
+  (function ground(){
+    const pos=[]; const push=(x,z)=>pos.push(x,0,z);
+    for(let r=30;r<=180;r+=30) for(let k=0;k<96;k++){
+      const a0=k/96*Math.PI*2,a1=(k+1)/96*Math.PI*2;
+      push(r*Math.cos(a0),r*Math.sin(a0)); push(r*Math.cos(a1),r*Math.sin(a1));
+    }
+    for(let i=0;i<12;i++){const a=i/12*Math.PI*2;
+      push(30*Math.cos(a),30*Math.sin(a)); push(180*Math.cos(a),180*Math.sin(a));}
+    const g=new THREE.BufferGeometry();
+    g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
+    scene.add(new THREE.LineSegments(g,new THREE.LineBasicMaterial({color:0x2f3644,transparent:true,opacity:.5})));
+  })();
+
+  // ---------- камера ----------
+  const target=new THREE.Vector3(0,TOTAL*0.45,0);
+  const DEF={theta:0.9,phi:1.28,dist:330};
+  let theta=DEF.theta,phi=DEF.phi,dist=DEF.dist;
+  function updateCamera(){
+    phi=Math.max(.15,Math.min(Math.PI-.15,phi));
+    dist=Math.max(70,Math.min(700,dist));
+    camera.position.set(
+      target.x+dist*Math.sin(phi)*Math.cos(theta),
+      target.y+dist*Math.cos(phi),
+      target.z+dist*Math.sin(phi)*Math.sin(theta));
+    camera.lookAt(target);
+  }
+  // Единая обработка мыши и тача через pointer-события:
+  // 1 указатель — вращение, 2 указателя — щипковый зум. Никаких конфликтов между ними.
+  const pointers=new Map();
+  let dragging=false, pinchDist=0;
+  const pinchDistance=()=>{const p=[...pointers.values()];
+    return Math.hypot(p[0].x-p[1].x, p[0].y-p[1].y);};
+  canvas.addEventListener('pointerdown',e=>{
+    pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
+    dragging=true; canvas.classList.add('dragging'); canvas.setPointerCapture(e.pointerId);
+    if(pointers.size===2) pinchDist=pinchDistance();
+  });
+  canvas.addEventListener('pointermove',e=>{
+    const p=pointers.get(e.pointerId); if(!p) return;
+    if(pointers.size===1){ theta+=(e.clientX-p.x)*.005; phi-=(e.clientY-p.y)*.005; }
+    p.x=e.clientX; p.y=e.clientY;
+    if(pointers.size===2){ const d=pinchDistance(); if(pinchDist) dist*=pinchDist/d; pinchDist=d; }
+  });
+  const endPointer=e=>{
+    pointers.delete(e.pointerId);
+    if(pointers.size<2) pinchDist=0;
+    if(pointers.size===0){ dragging=false; canvas.classList.remove('dragging'); }
+  };
+  canvas.addEventListener('pointerup',endPointer);
+  canvas.addEventListener('pointercancel',endPointer);
+  canvas.addEventListener('wheel',e=>{e.preventDefault();dist*=(1+Math.sign(e.deltaY)*.08);},{passive:false});
+
+  // ---------- чертёжный слой ----------
+  const NSVG='http://www.w3.org/2000/svg';
+  const el=(t,attrs)=>{const e=document.createElementNS(NSVG,t);
+    for(const k in attrs) e.setAttribute(k,attrs[k]); return e;};
+  const _v=new THREE.Vector3();
+  let W=0, Hh=0;
+  function proj(x,y,z){
+    _v.set(x,y,z).project(camera);
+    return {x:(_v.x*.5+.5)*W, y:(-_v.y*.5+.5)*Hh, ok:_v.z<1};
+  }
+  // экранные края кольца на высоте y с радиусом r
+  function ringExtent(r,y){
+    let minx=1e9,maxx=-1e9,ymin=1e9,ymax=-1e9;
+    for(let i=0;i<48;i++){
+      const a=2*Math.PI*i/48;
+      const p=proj(r*Math.cos(a),y,r*Math.sin(a));
+      minx=Math.min(minx,p.x);maxx=Math.max(maxx,p.x);
+      ymin=Math.min(ymin,p.y);ymax=Math.max(ymax,p.y);
+    }
+    return {minx,maxx,ymin,ymax};
+  }
+
+  // вертикальный размер между двумя высотами, на экранной вертикали x
+  function vdim(g, x, yA, yB, value, caption){
+    const a=proj(0,yA,0), b=proj(0,yB,0);
+    if(!a.ok||!b.ok) return;
+    g.appendChild(el('path',{class:'dim', d:`M${x} ${a.y} L${x} ${b.y}`}));
+    for(const p of [a,b]) g.appendChild(el('path',{class:'tick', d:`M${x-5} ${p.y} L${x+5} ${p.y}`}));
+    const my=(a.y+b.y)/2;
+    const t1=el('text',{class:'val', x:x-10, y:my-3, 'text-anchor':'end'}); t1.textContent=value;
+    g.appendChild(t1);
+    if(caption){
+      const t2=el('text',{class:'cap', x:x-10, y:my+11, 'text-anchor':'end'}); t2.textContent=caption;
+      g.appendChild(t2);
+    }
+  }
+
+  let showInfo = true;
+  function drawOverlay(){
+    if(!showInfo) return;
+    while(svg.firstChild) svg.removeChild(svg.firstChild);
+    const g = el('g',{});
+
+    const base = ringExtent(21.6, 0);
+    const pBase = proj(0,0,0);
+
+    // габаритные высоты — слева от башни
+    const xDim = Math.max(96, base.minx - 56);
+    vdim(g, xDim, 0, 148, '148 м', 'без траверс');
+    vdim(g, xDim - 78, 0, 160, '160 м', 'полная высота');
+    // высота одной секции
+    vdim(g, xDim + 40, 25, 50, '25 м', 'секция');
+
+    // диаметр фундамента — снизу
+    const yD = base.ymax + 34;
+    g.appendChild(el('path',{class:'dim', d:`M${base.minx} ${yD} L${base.maxx} ${yD}`}));
+    for(const x of [base.minx, base.maxx])
+      g.appendChild(el('path',{class:'tick', d:`M${x} ${yD-5} L${x} ${yD+5}`}));
+    const td=el('text',{class:'val', x:(base.minx+base.maxx)/2, y:yD+22, 'text-anchor':'middle'});
+    td.textContent='⌀ 40,3 м'; g.appendChild(td);
+    const tc=el('text',{class:'cap', x:(base.minx+base.maxx)/2, y:yD+36, 'text-anchor':'middle'});
+    tc.textContent='фундамент · глубина 3 м'; g.appendChild(tc);
+
+    svg.appendChild(g);
+  }
+
+  // ---------- UI ----------
+  const twistEl=document.getElementById('twist'), twistOut=document.getElementById('twistOut');
+  const spinEl=document.getElementById('spin'), spinOut=document.getElementById('spinOut');
+  const infoBtn=document.getElementById('info');
+  let pending=null;
+  twistEl.addEventListener('input',()=>{
+    twistOut.textContent=twistEl.value+'%';
+    cancelAnimationFrame(pending);
+    pending=requestAnimationFrame(()=>rebuild(+twistEl.value/100));
+  });
+  spinEl.addEventListener('input',()=>{spinOut.textContent=(+spinEl.value).toFixed(2);});
+  document.getElementById('reset').addEventListener('click',()=>{
+    theta=DEF.theta;phi=DEF.phi;dist=DEF.dist;
+    twistEl.value=100;twistOut.textContent='100%';rebuild(1);
+    spinEl.value=0.3;spinOut.textContent='0.30';
+  });
+  document.getElementById('export').addEventListener('click',exportOBJ);
+  infoBtn.addEventListener('click',()=>{
+    showInfo=!showInfo;
+    infoBtn.setAttribute('aria-pressed', showInfo);
+    svg.classList.toggle('off', !showInfo);
+  });
+  if(window.matchMedia('(prefers-reduced-motion: reduce)').matches){
+    spinEl.value=0; spinOut.textContent='0.00';
+  }
+
+  // ---------- цикл ----------
+  function resize(){
+    W=window.innerWidth; Hh=window.innerHeight;
+    renderer.setSize(W,Hh,false);
+    svg.setAttribute('viewBox',`0 0 ${W} ${Hh}`);
+    camera.aspect=W/Hh; camera.updateProjectionMatrix();
+  }
+  window.addEventListener('resize',resize);
+  // Оверлей проецируется от камеры — перерисовываем его только когда камера/размер/режим
+  // реально изменились, а не каждый кадр (заметно экономит CPU на телефоне при автоповороте off).
+  let _px=NaN,_py=NaN,_pz=NaN,_pInfo=null,_pW=-1,_pH=-1;
+  function overlayChanged(){
+    const c=camera.position;
+    if(c.x===_px&&c.y===_py&&c.z===_pz&&showInfo===_pInfo&&W===_pW&&Hh===_pH) return false;
+    _px=c.x;_py=c.y;_pz=c.z;_pInfo=showInfo;_pW=W;_pH=Hh;
+    return true;
+  }
+  let last=performance.now();
+  function loop(now){
+    const dt=(now-last)/1000; last=now;
+    if(!dragging) theta+=dt*(+spinEl.value)*0.35;
+    updateCamera();
+    renderer.render(scene,camera);
+    if(overlayChanged()) drawOverlay();
+    requestAnimationFrame(loop);
+  }
+  rebuild(1); resize(); updateCamera(); requestAnimationFrame(loop);
+  } // boot
+})();
+</script>
+</body>
+</html>
