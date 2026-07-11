@@ -352,31 +352,31 @@
     return {x:(_v.x*.5+.5)*W, y:(-_v.y*.5+.5)*Hh, ok:_v.z<1};
   }
   // Размер, привязанный к двум точкам в мировом пространстве: выносная линия и метки
-  // проецируются из 3D, поэтому вращаются вместе с башней. `away` — мировая точка,
-  // от которой отводятся засечки и подпись (наружу от оси), чтобы они не лезли на модель.
-  function dim3(g, A, B, value, caption, away){
+  // проецируются из 3D, поэтому вращаются вместе с башней. `lead` — куда тянуть пунктирные
+  // выносные от концов: 'axis' (к центральной оси на той же высоте) или 'up' (вертикально
+  // до уровня пола y=0). Подпись всегда справа от линии, выключка по левому краю — сторона
+  // не перекидывается при вращении.
+  function dim3(g, A, B, value, caption, lead){
     const a=proj(A[0],A[1],A[2]), b=proj(B[0],B[1],B[2]);
     if(!a.ok||!b.ok) return;
     let dx=b.x-a.x, dy=b.y-a.y; const len=Math.hypot(dx,dy)||1; dx/=len; dy/=len;
-    let nx=-dy, ny=dx;                       // экранная нормаль к выносной линии
-    const mx=(a.x+b.x)/2, my=(a.y+b.y)/2;
-    const ap=proj(away[0],away[1],away[2]);  // развернуть нормаль наружу от оси
-    if(ap.ok && ((mx-ap.x)*nx+(my-ap.y)*ny)<0){ nx=-nx; ny=-ny; }
-    // пунктирные выносные линии от крайних точек размера к центральной оси башни
+    const nx=-dy, ny=dx;                      // экранная нормаль (для симметричных засечек)
+    // пунктирные выносные линии от крайних точек размера
     for(const P of [A,B]){
-      const p=proj(P[0],P[1],P[2]), c=proj(0,P[1],0);
+      const T = lead==='up' ? [P[0],0,P[2]] : [0,P[1],0];
+      const p=proj(P[0],P[1],P[2]), c=proj(T[0],T[1],T[2]);
       if(p.ok&&c.ok) g.appendChild(el('path',{class:'lead', d:`M${p.x} ${p.y} L${c.x} ${c.y}`}));
     }
     g.appendChild(el('path',{class:'dim', d:`M${a.x} ${a.y} L${b.x} ${b.y}`}));
     const tk=5;
     for(const p of [a,b])
       g.appendChild(el('path',{class:'tick', d:`M${p.x-nx*tk} ${p.y-ny*tk} L${p.x+nx*tk} ${p.y+ny*tk}`}));
-    // Подписи всегда «лицом» к экрану (билборд), отведены по нормали наружу от оси.
-    const off=14;
-    const t1=el('text',{class:'val', x:mx+nx*off, y:my+ny*off, 'text-anchor':'middle'});
+    // Подпись — билборд, всегда справа от линии, текст выключен по левому краю.
+    const tx=Math.max(a.x,b.x)+10, ty=(a.y+b.y)/2;
+    const t1=el('text',{class:'val', x:tx, y:ty, 'text-anchor':'start'});
     t1.textContent=value; g.appendChild(t1);
     if(caption){
-      const t2=el('text',{class:'cap', x:mx+nx*off, y:my+ny*off+11, 'text-anchor':'middle'});
+      const t2=el('text',{class:'cap', x:tx, y:ty+11, 'text-anchor':'start'});
       t2.textContent=caption; g.appendChild(t2);
     }
   }
@@ -388,18 +388,21 @@
     const g = el('g',{});
     // Все высотные выноски — под одним азимутом, единой вертикальной лесенкой с одной
     // стороны башни. Азимут совпадает с 3-й радиальной линией разметки пола.
-    const ANG=2/GRID_SPOKES*Math.PI*2, dx=Math.cos(ANG), dz=Math.sin(ANG), axisMid=[0,74,0];
-    const col=(r,y)=>[dx*r, y, dz*r];      // точка колонки-выноски на радиусе r, высоте y
+    const ANG=2/GRID_SPOKES*Math.PI*2, dx=Math.cos(ANG), dz=Math.sin(ANG);
+    const col=(r,y)=>[dx*r, y, dz*r];      // точка на радиусе r, высоте y в плоскости азимута
 
     // центральная ось башни — пунктиром
     const ax0=proj(0,0,0), ax1=proj(0,160,0);
     if(ax0.ok&&ax1.ok) g.appendChild(el('path',{class:'axis', d:`M${ax0.x} ${ax0.y} L${ax1.x} ${ax1.y}`}));
 
-    dim3(g, col(26,25), col(26,50),  '25 м',  'секция',       axisMid);
-    dim3(g, col(54,0),  col(54,148), '148 м', 'без траверс',  axisMid);
-    dim3(g, col(82,0),  col(82,160), '160 м', 'полная высота',axisMid);
-    // диаметр фундамента — горизонтальная линия через центр основания
-    dim3(g, [-21.6,0,0], [21.6,0,0], '⌀ 40,3 м', 'фундамент · глубина 3 м', [0,-40,0]);
+    // высоты — вертикальная лесенка, выносные пунктиры к центральной оси
+    dim3(g, col(26,25), col(26,50),  '25 м',  'секция',       'axis');
+    dim3(g, col(54,0),  col(54,148), '148 м', 'без траверс',  'axis');
+    dim3(g, col(82,0),  col(82,160), '160 м', 'полная высота','axis');
+    // диаметр фундамента — в плоскости того же азимута, заметно ниже пола;
+    // пунктирные выносные от его концов идут вверх до уровня пола (y=0)
+    const DFY=-32, DR=20.15;               // глубина подписи под полом и радиус ⌀40,3
+    dim3(g, col(-DR,DFY), col(DR,DFY), '⌀ 40,3 м', 'фундамент · глубина 3 м', 'up');
 
     svg.appendChild(g);
   }
