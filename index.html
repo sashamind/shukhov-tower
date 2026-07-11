@@ -371,12 +371,15 @@
     const tk=5;
     for(const p of [a,b])
       g.appendChild(el('path',{class:'tick', d:`M${p.x-nx*tk} ${p.y-ny*tk} L${p.x+nx*tk} ${p.y+ny*tk}`}));
-    // Подпись — билборд, всегда справа от линии, текст выключен по левому краю.
-    const tx=Math.max(a.x,b.x)+10, ty=(a.y+b.y)/2;
-    const t1=el('text',{class:'val', x:tx, y:ty, 'text-anchor':'start'});
+    // Подпись — билборд. Обычно справа от линии, выключка по левому краю.
+    // Исключение — диаметр (lead 'up'): по центру и под линией.
+    let tx, ty, anchor;
+    if(lead==='up'){ tx=(a.x+b.x)/2; ty=Math.max(a.y,b.y)+16; anchor='middle'; }
+    else{ tx=Math.max(a.x,b.x)+10; ty=(a.y+b.y)/2; anchor='start'; }
+    const t1=el('text',{class:'val', x:tx, y:ty, 'text-anchor':anchor});
     t1.textContent=value; g.appendChild(t1);
     if(caption){
-      const t2=el('text',{class:'cap', x:tx, y:ty+11, 'text-anchor':'start'});
+      const t2=el('text',{class:'cap', x:tx, y:ty+11, 'text-anchor':anchor});
       t2.textContent=caption; g.appendChild(t2);
     }
   }
