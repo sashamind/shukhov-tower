@@ -55,6 +55,10 @@
   .panel button[aria-pressed=true]{border-color:var(--red);color:var(--ink);background:rgba(212,58,47,.16)}
   .panel button:focus-visible,input:focus-visible{outline:2px solid var(--red);outline-offset:2px}
 
+  /* кнопка-гамбургер — только на мобильных, десктоп её не видит */
+  .menu-btn{display:none}
+  .menu-btn:focus-visible{outline:2px solid var(--red);outline-offset:2px}
+
   .panel{
     right:calc(24px + env(safe-area-inset-right));
     bottom:calc(24px + env(safe-area-inset-bottom));}
@@ -63,12 +67,27 @@
     top:calc(24px + env(safe-area-inset-top));}
 
   @media (max-width:760px){
+    .menu-btn{display:flex;position:fixed;z-index:20;
+      top:calc(14px + env(safe-area-inset-top));
+      right:calc(14px + env(safe-area-inset-right));
+      width:44px;height:44px;align-items:center;justify-content:center;
+      font-size:20px;line-height:1;color:var(--steel);cursor:pointer;
+      touch-action:manipulation;
+      background:rgba(14,17,22,.86);border:1px solid rgba(216,205,184,.22);
+      -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
+    .menu-btn[aria-expanded=true]{border-color:var(--red);color:var(--ink)}
+
+    /* панель по умолчанию убрана вниз за экран, выезжает при .open */
     .panel{right:12px;left:12px;width:auto;
       bottom:calc(12px + env(safe-area-inset-bottom));
-      padding:14px;grid-gap:10px}
+      padding:14px;grid-gap:10px;
+      transform:translateY(160%);opacity:0;pointer-events:none;
+      transition:transform .28s ease,opacity .28s ease}
+    .panel.open{transform:none;opacity:1;pointer-events:auto}
     .panel .row{margin-bottom:12px}
+
     .hud{left:calc(14px + env(safe-area-inset-left));
-      top:calc(14px + env(safe-area-inset-top));max-width:200px}
+      top:calc(14px + env(safe-area-inset-top));max-width:60vw}
     .cap{display:none}
   }
   /* ландшафтные телефоны: панель узкая справа, чтобы не растягивалась на всю ширину */
@@ -84,6 +103,8 @@
 <canvas id="scene"></canvas>
 <svg id="overlay" aria-hidden="true"></svg>
 
+<button id="menu" class="menu-btn" aria-label="Управление" aria-expanded="false" aria-controls="panel">☰</button>
+
 <div class="hud">
   <div class="eyebrow">Москва · Шаболовка</div>
   <h1>Шуховская<br>башня</h1>
@@ -92,7 +113,7 @@
     первая радиотрансляция <b>19.03.1922</b></div>
 </div>
 
-<div class="panel">
+<div class="panel" id="panel">
   <div class="row">
     <label for="twist">Закрутка <output id="twistOut">100%</output></label>
     <input type="range" id="twist" min="0" max="150" value="100" step="1" aria-label="Закрутка образующих, % от реальной">
@@ -404,6 +425,14 @@
     infoBtn.setAttribute('aria-pressed', showInfo);
     svg.classList.toggle('off', !showInfo);
   });
+  // гамбургер: выезжающая панель управления на мобильных
+  const menuBtn=document.getElementById('menu'), panel=document.getElementById('panel');
+  menuBtn.addEventListener('click',()=>{
+    const open=panel.classList.toggle('open');
+    menuBtn.setAttribute('aria-expanded',open);
+    menuBtn.textContent=open?'✕':'☰';
+  });
+
   if(window.matchMedia('(prefers-reduced-motion: reduce)').matches){
     spinEl.value=0; spinOut.textContent='0.00';
   }
