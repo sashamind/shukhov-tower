@@ -23,6 +23,9 @@
   /* чертёжная разметка */
   .dim{stroke:var(--line);stroke-width:1;fill:none;opacity:.7}
   .tick{stroke:var(--line);stroke-width:1;opacity:.7}
+  /* едва заметные пунктирные выносные линии от концов размеров к оси башни */
+  .lead{stroke:var(--line);stroke-width:1;fill:none;opacity:.16;stroke-dasharray:2 5}
+  .axis{stroke:var(--line);stroke-width:1;fill:none;opacity:.26;stroke-dasharray:2 6}
   .val{font-family:var(--mono);font-size:12px;font-weight:300;fill:var(--steel);letter-spacing:.04em;opacity:.42}
   .cap{font-family:var(--mono);font-size:8px;font-weight:300;fill:var(--dim);letter-spacing:.16em;text-transform:uppercase;opacity:.35}
 
@@ -359,6 +362,11 @@
     const mx=(a.x+b.x)/2, my=(a.y+b.y)/2;
     const ap=proj(away[0],away[1],away[2]);  // развернуть нормаль наружу от оси
     if(ap.ok && ((mx-ap.x)*nx+(my-ap.y)*ny)<0){ nx=-nx; ny=-ny; }
+    // пунктирные выносные линии от крайних точек размера к центральной оси башни
+    for(const P of [A,B]){
+      const p=proj(P[0],P[1],P[2]), c=proj(0,P[1],0);
+      if(p.ok&&c.ok) g.appendChild(el('path',{class:'lead', d:`M${p.x} ${p.y} L${c.x} ${c.y}`}));
+    }
     g.appendChild(el('path',{class:'dim', d:`M${a.x} ${a.y} L${b.x} ${b.y}`}));
     const tk=5;
     for(const p of [a,b])
@@ -383,9 +391,13 @@
     const ANG=2/GRID_SPOKES*Math.PI*2, dx=Math.cos(ANG), dz=Math.sin(ANG), axisMid=[0,74,0];
     const col=(r,y)=>[dx*r, y, dz*r];      // точка колонки-выноски на радиусе r, высоте y
 
+    // центральная ось башни — пунктиром
+    const ax0=proj(0,0,0), ax1=proj(0,160,0);
+    if(ax0.ok&&ax1.ok) g.appendChild(el('path',{class:'axis', d:`M${ax0.x} ${ax0.y} L${ax1.x} ${ax1.y}`}));
+
     dim3(g, col(26,25), col(26,50),  '25 м',  'секция',       axisMid);
-    dim3(g, col(40,0),  col(40,148), '148 м', 'без траверс',  axisMid);
-    dim3(g, col(54,0),  col(54,160), '160 м', 'полная высота',axisMid);
+    dim3(g, col(54,0),  col(54,148), '148 м', 'без траверс',  axisMid);
+    dim3(g, col(82,0),  col(82,160), '160 м', 'полная высота',axisMid);
     // диаметр фундамента — горизонтальная линия через центр основания
     dim3(g, [-21.6,0,0], [21.6,0,0], '⌀ 40,3 м', 'фундамент · глубина 3 м', [0,-40,0]);
 
