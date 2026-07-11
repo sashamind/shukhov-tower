@@ -23,8 +23,8 @@
   /* чертёжная разметка */
   .dim{stroke:var(--line);stroke-width:1;fill:none;opacity:.7}
   .tick{stroke:var(--line);stroke-width:1;opacity:.7}
-  .val{font-family:var(--mono);font-size:15px;font-weight:300;fill:var(--steel);letter-spacing:.04em;opacity:.7}
-  .cap{font-family:var(--mono);font-size:9.5px;font-weight:300;fill:var(--dim);letter-spacing:.16em;text-transform:uppercase;opacity:.7}
+  .val{font-family:var(--mono);font-size:12px;font-weight:300;fill:var(--steel);letter-spacing:.04em;opacity:.42}
+  .cap{font-family:var(--mono);font-size:8px;font-weight:300;fill:var(--dim);letter-spacing:.16em;text-transform:uppercase;opacity:.35}
 
   .hud{position:fixed;left:24px;top:24px;pointer-events:none;user-select:none;max-width:270px}
   .hud .eyebrow{font-size:11px;letter-spacing:.35em;text-transform:uppercase;color:var(--red);font-weight:700}
@@ -363,19 +363,14 @@
     const tk=5;
     for(const p of [a,b])
       g.appendChild(el('path',{class:'tick', d:`M${p.x-nx*tk} ${p.y-ny*tk} L${p.x+nx*tk} ${p.y+ny*tk}`}));
-    // Подписи ориентированы ВДОЛЬ выносной линии в пространстве (наклоняются с камерой),
-    // а не «лицом» к экрану. Строки разносим по нормали, чтобы шли параллельно линии.
-    let deg=Math.atan2(dy,dx)*180/Math.PI;   // угол проекции линии
-    if(deg>90) deg-=180; else if(deg<-90) deg+=180;   // держим текст читаемым, не вверх ногами
+    // Подписи всегда «лицом» к экрану (билборд), отведены по нормали наружу от оси.
     const off=14;
-    const label=(cls,text,d)=>{
-      const x=mx+nx*(off+d), y=my+ny*(off+d);
-      const t=el('text',{class:cls, x, y, 'text-anchor':'middle',
-        transform:`rotate(${deg} ${x} ${y})`});
-      t.textContent=text; g.appendChild(t);
-    };
-    label('val', value, 0);
-    if(caption) label('cap', caption, 12);
+    const t1=el('text',{class:'val', x:mx+nx*off, y:my+ny*off, 'text-anchor':'middle'});
+    t1.textContent=value; g.appendChild(t1);
+    if(caption){
+      const t2=el('text',{class:'cap', x:mx+nx*off, y:my+ny*off+11, 'text-anchor':'middle'});
+      t2.textContent=caption; g.appendChild(t2);
+    }
   }
 
   let showInfo = true;
@@ -388,9 +383,9 @@
     const ANG=2/GRID_SPOKES*Math.PI*2, dx=Math.cos(ANG), dz=Math.sin(ANG), axisMid=[0,74,0];
     const col=(r,y)=>[dx*r, y, dz*r];      // точка колонки-выноски на радиусе r, высоте y
 
-    dim3(g, col(23,25), col(23,50),  '25 м',  'секция',       axisMid);
-    dim3(g, col(28,0),  col(28,148), '148 м', 'без траверс',  axisMid);
-    dim3(g, col(33,0),  col(33,160), '160 м', 'полная высота',axisMid);
+    dim3(g, col(26,25), col(26,50),  '25 м',  'секция',       axisMid);
+    dim3(g, col(40,0),  col(40,148), '148 м', 'без траверс',  axisMid);
+    dim3(g, col(54,0),  col(54,160), '160 м', 'полная высота',axisMid);
     // диаметр фундамента — горизонтальная линия через центр основания
     dim3(g, [-21.6,0,0], [21.6,0,0], '⌀ 40,3 м', 'фундамент · глубина 3 м', [0,-40,0]);
 
