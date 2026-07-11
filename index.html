@@ -347,30 +347,27 @@
     _v.set(x,y,z).project(camera);
     return {x:(_v.x*.5+.5)*W, y:(-_v.y*.5+.5)*Hh, ok:_v.z<1};
   }
-  // экранные края кольца на высоте y с радиусом r
-  function ringExtent(r,y){
-    let minx=1e9,maxx=-1e9,ymin=1e9,ymax=-1e9;
-    for(let i=0;i<48;i++){
-      const a=2*Math.PI*i/48;
-      const p=proj(r*Math.cos(a),y,r*Math.sin(a));
-      minx=Math.min(minx,p.x);maxx=Math.max(maxx,p.x);
-      ymin=Math.min(ymin,p.y);ymax=Math.max(ymax,p.y);
-    }
-    return {minx,maxx,ymin,ymax};
-  }
-
-  // вертикальный размер между двумя высотами, на экранной вертикали x
-  function vdim(g, x, yA, yB, value, caption){
-    const a=proj(0,yA,0), b=proj(0,yB,0);
+  // Размер, привязанный к двум точкам в мировом пространстве: выносная линия и метки
+  // проецируются из 3D, поэтому вращаются вместе с башней. `away` — мировая точка,
+  // от которой отводятся засечки и подпись (наружу от оси), чтобы они не лезли на модель.
+  function dim3(g, A, B, value, caption, away){
+    const a=proj(A[0],A[1],A[2]), b=proj(B[0],B[1],B[2]);
     if(!a.ok||!b.ok) return;
-    g.appendChild(el('path',{class:'dim', d:`M${x} ${a.y} L${x} ${b.y}`}));
-    for(const p of [a,b]) g.appendChild(el('path',{class:'tick', d:`M${x-5} ${p.y} L${x+5} ${p.y}`}));
-    const my=(a.y+b.y)/2;
-    const t1=el('text',{class:'val', x:x-10, y:my-3, 'text-anchor':'end'}); t1.textContent=value;
-    g.appendChild(t1);
+    let dx=b.x-a.x, dy=b.y-a.y; const len=Math.hypot(dx,dy)||1; dx/=len; dy/=len;
+    let nx=-dy, ny=dx;                       // экранная нормаль к выносной линии
+    const mx=(a.x+b.x)/2, my=(a.y+b.y)/2;
+    const ap=proj(away[0],away[1],away[2]);  // развернуть нормаль наружу от оси
+    if(ap.ok && ((mx-ap.x)*nx+(my-ap.y)*ny)<0){ nx=-nx; ny=-ny; }
+    g.appendChild(el('path',{class:'dim', d:`M${a.x} ${a.y} L${b.x} ${b.y}`}));
+    const tk=5;
+    for(const p of [a,b])
+      g.appendChild(el('path',{class:'tick', d:`M${p.x-nx*tk} ${p.y-ny*tk} L${p.x+nx*tk} ${p.y+ny*tk}`}));
+    const off=14;
+    const t1=el('text',{class:'val', x:mx+nx*off, y:my+ny*off, 'text-anchor':'middle'});
+    t1.textContent=value; g.appendChild(t1);
     if(caption){
-      const t2=el('text',{class:'cap', x:x-10, y:my+11, 'text-anchor':'end'}); t2.textContent=caption;
-      g.appendChild(t2);
+      const t2=el('text',{class:'cap', x:mx+nx*off, y:my+ny*off+12, 'text-anchor':'middle'});
+      t2.textContent=caption; g.appendChild(t2);
     }
   }
 
@@ -379,26 +376,18 @@
     if(!showInfo) return;
     while(svg.firstChild) svg.removeChild(svg.firstChild);
     const g = el('g',{});
+    const RD=27, axisMid=[0,74,0];          // радиус выносных линий (снаружи основания ⌀40,3)
+    const col=(ang,r)=>[r*Math.cos(ang),0,r*Math.sin(ang)]; // основание колонки-выноски
 
-    const base = ringExtent(21.6, 0);
-    const pBase = proj(0,0,0);
-
-    // габаритные высоты — слева от башни
-    const xDim = Math.max(96, base.minx - 56);
-    vdim(g, xDim, 0, 148, '148 м', 'без траверс');
-    vdim(g, xDim - 78, 0, 160, '160 м', 'полная высота');
-    // высота одной секции
-    vdim(g, xDim + 40, 25, 50, '25 м', 'секция');
-
-    // диаметр фундамента — снизу
-    const yD = base.ymax + 34;
-    g.appendChild(el('path',{class:'dim', d:`M${base.minx} ${yD} L${base.maxx} ${yD}`}));
-    for(const x of [base.minx, base.maxx])
-      g.appendChild(el('path',{class:'tick', d:`M${x} ${yD-5} L${x} ${yD+5}`}));
-    const td=el('text',{class:'val', x:(base.minx+base.maxx)/2, y:yD+22, 'text-anchor':'middle'});
-    td.textContent='⌀ 40,3 м'; g.appendChild(td);
-    const tc=el('text',{class:'cap', x:(base.minx+base.maxx)/2, y:yD+36, 'text-anchor':'middle'});
-    tc.textContent='фундамент · глубина 3 м'; g.appendChild(tc);
+    // габаритные высоты — вертикальные выноски, закреплённые в мировом пространстве
+    dim3(g, [RD,0,0], [RD,148,0], '148 м', 'без траверс', axisMid);
+    const c=col(2.4,RD);
+    dim3(g, [c[0],0,c[2]], [c[0],160,c[2]], '160 м', 'полная высота', axisMid);
+    // высота одной секции — ближе к башне, другой азимут
+    const s=col(-1.1,24);
+    dim3(g, [s[0],25,s[2]], [s[0],50,s[2]], '25 м', 'секция', axisMid);
+    // диаметр фундамента — горизонтальная линия через центр основания
+    dim3(g, [-21.6,0,0], [21.6,0,0], '⌀ 40,3 м', 'фундамент · глубина 3 м', [0,-40,0]);
 
     svg.appendChild(g);
   }
